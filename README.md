@@ -36,3 +36,77 @@ Lag Features: Automatically generates lag features and handles negative value co
 动态调优： 使用 Optuna 为每一个时间切片 (Fold) 动态寻找 XGBoost 的最优超参数。
 
 滞后特征： 自动构建滞后特征 (Lag Features) 并处理负值修正。
+
+## Usage / 使用指南
+### 1. Prepare Data (准备数据)
+
+Data should be a list of PyTorch Geometric Data or StaticGraphTemporalSignal snapshots. 数据应为 PyTorch Geometric 的 Data 快照列表。
+
+### 2. Run the Stacking Pipeline (运行堆叠流程)
+
+```python
+from egep.engine import StackingOrchestrator
+from egep.utils.metrics import calculate_metrics
+#1. Initialize Orchestrator / 初始化编排器
+orchestrator = StackingOrchestrator(
+    base_model_names=['lrgcn', 'dcrnn', 'agcrn'],
+    node_features=35,
+    num_nodes=212,
+    device='cuda',  # or 'cpu'
+    hidden_dim=32
+)
+
+#2. Run Nested CV / 运行嵌套交叉验证
+#This strictly follows: Train(A) -> Meta Train(B) -> Test(C)
+#严格遵循：训练(A) -> 元学习训练(B) -> 测试(C)
+preds, actuals = orchestrator.run_nested_cross_validation(
+    data_list=my_data_list,
+    initial_train_window=28,  # Period A length
+    meta_train_window=14,     # Period B length
+    meta_test_window=14,      # Period C length
+    stride=7,                 # Sliding step
+    base_epochs=100,
+    meta_trials=20            # Optuna trials
+)
+
+#3. Evaluate / 评估
+metrics = calculate_metrics(preds, actuals)
+print(metrics)
+```
+
+## Workflow Diagram / 流程图示
+The core logic of the StackingOrchestrator is defined as follows: StackingOrchestrator 的核心逻辑如下所示：
+
+```text
+Time Axis:  [0 ........................................ T]
+
+Split 1:
+[Period A (Base Train)] -> [Period B (Meta Train)] -> [Period C (Meta Test)]
+       (Train GNNs)      (GNN Preds -> Train XGB)   (Final Eval)
+
+Split 2 (Slide Forward):
+       [   Period A (Base Train)   ] -> [Period B] -> [Period C]
+Phase 1: Train Base Models on Period A.
+
+Phase 2: Use Base Models to predict Period B. Use these predictions (features) + True Values of B (targets) to tune & train the Meta Learner.
+
+Phase 3: Use Base Models to predict Period C. Feed these into the trained Meta Learner to get final predictions.
+```
+## Directory Structure / 目录结构
+```text
+egep/
+├── __init__.py
+├── engine.py           # Core Orchestrator (Orchestrates the Split A/B/C logic)
+├── callbacks.py        # Early Stopping utilities
+├── models/
+│   ├── __init__.py
+│   ├── registry.py     # Model registration decorator
+│   └── recurrent_gcn.py # Implementation of 8 base learners (LRGCN, AGCRN, etc.)
+├── meta/
+│   ├── __init__.py
+│   └── meta_learner.py # XGBoost + Optuna + Lag Feature Generation
+└── utils/
+    ├── __init__.py
+    └── metrics.py      # RMSE, MAPE, RAE calculation
+
+```
