@@ -27,7 +27,7 @@ GRU/GCN-based: dcrnn, evolvegcno, gconvgru
 
 Adaptive: agcrn (Adaptive Graph Convolutional Recurrent Network)
 
-### 3. Adaptive Meta-Learning (自适应元学习)
+### 3. Adaptive Stacking (自适应stacking)
 
 Dynamic Tuning: Uses Optuna to tune XGBoost hyperparameters for every temporal fold.
 
